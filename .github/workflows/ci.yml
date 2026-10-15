@@ -157,7 +157,7 @@ jobs:
           docker exec node bash /root/hb/install.sh /root/hb/agent.env | tee out.txt
           grep -q "HEARTBEAT_OK .*no systemd" out.txt
           sleep 5
-          docker exec node bash -c 'ps -o user= -C python3 | grep -qx hbagent && grep -q "mq:1883" /var/log/edgeshell-heartbeat.log'
+          docker exec node bash -c 'pgrep -u hbagent -f heartbeat_agent.py >/dev/null && grep -q "mq:1883" /var/log/edgeshell-heartbeat.log'
           docker exec node bash /root/hb/install.sh --uninstall | grep -q HEARTBEAT_UNINSTALLED
           ! docker exec node pgrep -f heartbeat_agent.py
 

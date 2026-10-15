@@ -29,6 +29,12 @@ PIDFILE=/run/edgeshell-heartbeat.pid
 stop_background() {
     if [ -f "$PIDFILE" ]; then kill "$(cat "$PIDFILE")" 2>/dev/null || true; rm -f "$PIDFILE"; fi
     pkill -u hbagent -f /opt/edgeshell-heartbeat/heartbeat_agent.py 2>/dev/null || true
+    # Wait for it to finish its clean disconnect; force it after 5 seconds.
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        pgrep -u hbagent -f /opt/edgeshell-heartbeat/heartbeat_agent.py >/dev/null 2>&1 || return 0
+        sleep 0.5
+    done
+    pkill -9 -u hbagent -f /opt/edgeshell-heartbeat/heartbeat_agent.py 2>/dev/null || true
 }
 
 if [ "${1:-}" = "--uninstall" ]; then
