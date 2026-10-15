@@ -138,10 +138,38 @@ jobs:
             ! test -e /opt/edgeshell-heartbeat
             ! id hbagent'
 
+  install-no-systemd:
+    name: Install without systemd (Ubuntu 22.04 container)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Background agent as hbagent, talking to a local broker
+        run: |
+          pip install cryptography
+          python -c "import os, heartbeat_protocol as hp; p = hp.provision(os.urandom(32), 'ci-node'); open('agent.env', 'w').write(''.join(f'{k}={v}
+' for k, v in p.items()))"
+          docker network create hb
+          docker run -d --name mq --network hb eclipse-mosquitto:2.0.20 mosquitto -c /mosquitto-no-auth.conf
+          docker run -d --name node --network hb ubuntu:22.04 sleep infinity
+          docker exec node bash -c 'apt-get update -qq && apt-get install -y -qq python3 procps >/dev/null'
+          docker exec node mkdir -p /root/hb /opt/edgeshell-heartbeat
+          for f in heartbeat_agent.py heartbeat_protocol.py install.sh agent.env; do docker cp "$f" node:/root/hb/; done
+          docker exec node bash -c 'printf "broker: mq
+port: 1883
+tls: false
+interval: 5
+" > /opt/edgeshell-heartbeat/config.yaml'
+          docker exec node bash /root/hb/install.sh /root/hb/agent.env | tee out.txt
+          grep -q "HEARTBEAT_OK .*no systemd" out.txt
+          sleep 5
+          docker exec node bash -c 'ps -o user= -C python3 | grep -qx hbagent && grep -q "mq:1883" /var/log/edgeshell-heartbeat.log'
+          docker exec node bash /root/hb/install.sh --uninstall | grep -q HEARTBEAT_UNINSTALLED
+          ! docker exec node pgrep -f heartbeat_agent.py
+
   release:
     name: GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [lint, secrets, test, broker, install]
+    needs: [lint, secrets, test, broker, install, install-no-systemd]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

@@ -20,9 +20,23 @@ SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 [ "$(id -u)" = 0 ] || { echo "run as root (sudo)"; exit 1; }
 
+# systemd is the normal case (Raspberry Pi OS, Debian, Ubuntu). Containers and
+# minimal systems without it get a background process run as hbagent instead.
+HAS_SYSTEMD=0
+[ -d /run/systemd/system ] && HAS_SYSTEMD=1
+PIDFILE=/run/edgeshell-heartbeat.pid
+
+stop_background() {
+    if [ -f "$PIDFILE" ]; then kill "$(cat "$PIDFILE")" 2>/dev/null || true; rm -f "$PIDFILE"; fi
+    pkill -u hbagent -f /opt/edgeshell-heartbeat/heartbeat_agent.py 2>/dev/null || true
+}
+
 if [ "${1:-}" = "--uninstall" ]; then
-    systemctl disable --now edgeshell-heartbeat 2>/dev/null || true
-    rm -f "$UNIT"; systemctl daemon-reload
+    if [ "$HAS_SYSTEMD" = 1 ]; then
+        systemctl disable --now edgeshell-heartbeat 2>/dev/null || true
+        rm -f "$UNIT"; systemctl daemon-reload
+    fi
+    stop_background
     rm -rf "$DIR"
     id hbagent >/dev/null 2>&1 && userdel hbagent 2>/dev/null || true
     echo "HEARTBEAT_UNINSTALLED"
@@ -69,6 +83,7 @@ YAML
     chmod 0644 "$DIR/config.yaml"
 fi
 
+mkdir -p "$(dirname "$UNIT")"
 cat > "$UNIT" <<'UNIT'
 [Unit]
 Description=EdgeShell MQTT heartbeat agent
@@ -105,12 +120,31 @@ CPUQuota=10%
 WantedBy=multi-user.target
 UNIT
 
+VERSION="$(PYTHONDONTWRITEBYTECODE=1 python3 -c 'import sys; sys.path.insert(0, "/opt/edgeshell-heartbeat"); import heartbeat_agent as a; print(a.__version__)')"
+
+if [ "$HAS_SYSTEMD" = 0 ]; then
+    # No systemd: run in the background as hbagent (containers, minimal systems).
+    rm -f "$UNIT"
+    stop_background
+    LOG=/var/log/edgeshell-heartbeat.log
+    touch "$LOG" && chown hbagent "$LOG"
+    su -s /bin/sh hbagent -c "PYTHONDONTWRITEBYTECODE=1 nohup python3 $DIR/heartbeat_agent.py >> $LOG 2>&1 & echo \$!" > "$PIDFILE"
+    sleep 3
+    if kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        echo "HEARTBEAT_OK $VERSION (no systemd: background process, log $LOG)"
+        exit 0
+    fi
+    tail -n 20 "$LOG" || true
+    echo "HEARTBEAT_FAILED"
+    exit 1
+fi
+
 systemctl daemon-reload
 systemctl enable edgeshell-heartbeat >/dev/null 2>&1
 systemctl restart edgeshell-heartbeat
 sleep 3
 if systemctl is-active --quiet edgeshell-heartbeat; then
-    echo "HEARTBEAT_OK $(PYTHONDONTWRITEBYTECODE=1 python3 -c 'import sys; sys.path.insert(0, "/opt/edgeshell-heartbeat"); import heartbeat_agent as a; print(a.__version__)')"
+    echo "HEARTBEAT_OK $VERSION"
 else
     journalctl -u edgeshell-heartbeat -n 20 --no-pager || true
     echo "HEARTBEAT_FAILED"
