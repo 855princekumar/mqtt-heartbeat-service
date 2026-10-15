@@ -70,27 +70,21 @@ jobs:
   broker:
     name: Real broker end to end (Mosquitto)
     runs-on: ubuntu-24.04
-    services:
-      mosquitto:
-        image: eclipse-mosquitto:2.0.20
-        ports: ["1883:1883"]
-        options: >-
-          --health-cmd "mosquitto_sub -t '$$SYS/#' -C 1 -W 3 || exit 1"
-          --health-interval 5s --health-retries 10
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - run: pip install paho-mqtt cryptography pyyaml
-      - name: Mosquitto allows anonymous local clients
+      - name: Mosquitto (anonymous, local only)
         run: |
-          docker exec "$(docker ps -qf ancestor=eclipse-mosquitto:2.0.20)" sh -c \
-            'printf "listener 1883\nallow_anonymous true\n" > /mosquitto/config/mosquitto.conf' || true
-          docker restart "$(docker ps -qf ancestor=eclipse-mosquitto:2.0.20)"
-          sleep 5
+          docker run -d --name mosquitto -p 127.0.0.1:1883:1883 eclipse-mosquitto:2.0.20 mosquitto -c /mosquitto-no-auth.conf
+          for i in $(seq 1 30); do (echo > /dev/tcp/127.0.0.1/1883) 2>/dev/null && break; sleep 1; done
       - name: Birth, heartbeats, forged messages rejected, signed last will after a cut
         run: python tests/live_check.py --broker 127.0.0.1 --port 1883 --no-tls --seconds 15
+      - name: Broker log on failure
+        if: failure()
+        run: docker logs mosquitto | tail -50
 
   install:
     name: Install as a hardened systemd service (Debian 12)
