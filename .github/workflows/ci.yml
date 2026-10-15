@@ -1,0 +1,164 @@
+name: CI
+
+# Every change: unit tests on the Python versions edge nodes run (Raspberry Pi
+# OS Bullseye ships 3.9, Bookworm 3.11) with paho-mqtt 1.x and 2.x, a real
+# broker end to end (Mosquitto), a real systemd install with hot reload,
+# static and secret scans. A tag v* publishes a GitHub release with the files.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint and static checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install ruff==0.6.9 bandit==1.8.6
+      - name: Syntax errors and undefined names
+        run: ruff check --select E9,F63,F7,F82 .
+      - name: Security lint
+        run: bandit -q -r heartbeat_agent.py heartbeat_protocol.py -ll
+      - name: Installer parses
+        run: bash -n install.sh
+      - name: No em dashes
+        run: |
+          if git grep -nI -e "$(printf '\342\200\224')" -- . ':!.github/workflows/ci.yml'; then exit 1; fi
+
+  secrets:
+    name: Secret scan (full history)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7  # v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test:
+    name: Unit tests (Python ${{ matrix.python }}, paho ${{ matrix.paho }})
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.11", "3.12", "3.13"]
+        paho: ["1.6.1", "2.1.0"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install pytest "paho-mqtt==${{ matrix.paho }}" cryptography pyyaml
+      - name: Tests (at least 30, none skipped)
+        run: |
+          python -m pytest -q -rs tests | tee out.txt
+          n=$(grep -oE '[0-9]+ passed' out.txt | grep -oE '[0-9]+')
+          test "${n:-0}" -ge 30
+          ! grep -qE '[0-9]+ skipped' out.txt
+
+  broker:
+    name: Real broker end to end (Mosquitto)
+    runs-on: ubuntu-24.04
+    services:
+      mosquitto:
+        image: eclipse-mosquitto:2.0.20
+        ports: ["1883:1883"]
+        options: >-
+          --health-cmd "mosquitto_sub -t '$$SYS/#' -C 1 -W 3 || exit 1"
+          --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: pip install paho-mqtt cryptography pyyaml
+      - name: Mosquitto allows anonymous local clients
+        run: |
+          docker exec "$(docker ps -qf ancestor=eclipse-mosquitto:2.0.20)" sh -c \
+            'printf "listener 1883\nallow_anonymous true\n" > /mosquitto/config/mosquitto.conf' || true
+          docker restart "$(docker ps -qf ancestor=eclipse-mosquitto:2.0.20)"
+          sleep 5
+      - name: Birth, heartbeats, forged messages rejected, signed last will after a cut
+        run: python tests/live_check.py --broker 127.0.0.1 --port 1883 --no-tls --seconds 15
+
+  install:
+    name: Install as a hardened systemd service (Debian 12)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Debian 12 with systemd
+        run: |
+          docker run -d --name node --privileged --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw jrei/systemd-debian:12
+          for i in $(seq 1 30); do docker exec node systemctl is-system-running 2>/dev/null | grep -qE 'running|degraded' && break; sleep 2; done
+          docker exec node bash -c 'apt-get update -qq && apt-get install -y -qq python3 >/dev/null'
+      - name: Install with a throwaway key
+        run: |
+          pip install cryptography
+          python -c "import os, heartbeat_protocol as hp; p = hp.provision(os.urandom(32), 'ci-node'); open('agent.env', 'w').write(''.join(f'{k}={v}\n' for k, v in p.items()))"
+          docker exec node mkdir -p /root/hb
+          for f in heartbeat_agent.py heartbeat_protocol.py install.sh agent.env; do docker cp "$f" node:/root/hb/; done
+          docker exec node bash /root/hb/install.sh /root/hb/agent.env | tee install.txt
+          grep -q HEARTBEAT_OK install.txt
+      - name: Runs unprivileged and hardened; the key file is private
+        run: |
+          docker exec node bash -c '
+            set -e
+            test "$(systemctl show edgeshell-heartbeat -p User --value)" = hbagent
+            test "$(systemctl show edgeshell-heartbeat -p NoNewPrivileges --value)" = yes
+            test "$(systemctl show edgeshell-heartbeat -p ProtectSystem --value)" = strict
+            test "$(stat -c %a:%U:%G /opt/edgeshell-heartbeat/agent.env)" = 640:root:hbagent
+            test "$(stat -c %a /opt/edgeshell-heartbeat/config.yaml)" = 644
+            ! ls /opt/edgeshell-heartbeat/__pycache__ 2>/dev/null'
+      - name: Hot reload without a restart; a broken file is ignored
+        run: |
+          docker exec node bash -c '
+            set -e
+            d=/opt/edgeshell-heartbeat
+            printf "broker: broker.hivemq.com\nport: 8883\ntls: true\ninterval: 5\n" > $d/config.yaml.new && mv $d/config.yaml.new $d/config.yaml
+            sleep 15
+            journalctl -u edgeshell-heartbeat --no-pager | grep -q "settings reloaded: interval=5"
+            printf "broker: [broken\n" > $d/config.yaml
+            sleep 8
+            journalctl -u edgeshell-heartbeat --no-pager | grep -q "not applied"
+            systemctl is-active --quiet edgeshell-heartbeat
+            test "$(systemctl show edgeshell-heartbeat -p NRestarts --value)" = 0'
+      - name: Update keeps a pushed config.yaml; uninstall removes everything
+        run: |
+          docker exec node bash -c '
+            set -e
+            printf "interval: 7\n" > /opt/edgeshell-heartbeat/config.yaml
+            bash /root/hb/install.sh /root/hb/agent.env | grep -q HEARTBEAT_OK
+            grep -q "interval: 7" /opt/edgeshell-heartbeat/config.yaml
+            bash /root/hb/install.sh --uninstall | grep -q HEARTBEAT_UNINSTALLED
+            ! test -e /opt/edgeshell-heartbeat
+            ! id hbagent'
+
+  release:
+    name: GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [lint, secrets, test, broker, install]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: Package and checksum
+        run: |
+          mkdir dist
+          tar czf "dist/mqtt-heartbeat-service-${GITHUB_REF_NAME}.tar.gz" heartbeat_agent.py heartbeat_protocol.py install.sh README.md LICENSE
+          (cd dist && sha256sum *.tar.gz > SHA256SUMS)
+      - uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8  # v2.3.2
+        with:
+          files: dist/*
+          generate_release_notes: true

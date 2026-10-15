@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/.live/
+agent.env
+agent.env.*
+*.key
+.env
