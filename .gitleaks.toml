@@ -1,0 +1,11 @@
+# Public test vectors only: derived from the test master key bytes(0..31) in
+# tests/test_protocol.py, used to pin the protocol. They protect nothing.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "protocol test vectors (public, derived from bytes 0..31)"
+regexes = [
+  '''493726126c479bc52142d4f3f63850c0f5ca956ef4466bc3161fa7b0d6233735''',
+  '''714f19029722c7ce079b14df24552ae0f154762e040f188d79dece5ef5208ade''',
+]
