@@ -1,0 +1,75 @@
+<svg width="1200" height="300" viewBox="0 0 1200 300" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" role="img" aria-labelledby="title desc">
+  <title id="title">MQTT Heartbeat Service, a SenseHive extension</title>
+  <desc id="desc">An edge node sends an encrypted heartbeat every 10 seconds through a public MQTT broker to SenseHive, and leaves a last will for when it drops.</desc>
+  <defs>
+    <style>
+      .pulse{fill:none;stroke:#f59e0b;stroke-width:3;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:520;stroke-dashoffset:520;animation:draw 2.5s linear infinite}
+      .beat{transform-box:fill-box;transform-origin:center;animation:beat 2.5s ease-out infinite}
+      .ring{fill:none;stroke:#f59e0b;stroke-width:2;transform-box:fill-box;transform-origin:center;animation:ring 2.5s ease-out infinite}
+      .pkt{fill:#f59e0b}
+      .lwt{fill:#f87171}
+      .box{fill:#161b22;stroke-width:1.5}
+      .lbl{fill:#c9d1d9;font-size:13px;font-weight:600}
+      .sub{fill:#8b949e;font-size:11px}
+      @keyframes draw{0%{stroke-dashoffset:520}70%{stroke-dashoffset:0}100%{stroke-dashoffset:0;opacity:0}}
+      @keyframes beat{0%,100%{transform:scale(1)}12%{transform:scale(1.18)}24%{transform:scale(1)}}
+      @keyframes ring{0%{transform:scale(1);opacity:.8}100%{transform:scale(2.4);opacity:0}}
+      @media (prefers-reduced-motion: reduce){.pulse{animation:none;stroke-dashoffset:0}.beat,.ring{animation:none}.ring{opacity:0}}
+    </style>
+  </defs>
+
+  <rect width="1200" height="300" fill="#0d1117"/>
+  <g opacity="0.05" stroke="#ffffff">
+    <path d="M0 50 H1200 M0 100 H1200 M0 150 H1200 M0 200 H1200 M0 250 H1200"/>
+    <path d="M100 0 V300 M200 0 V300 M300 0 V300 M400 0 V300 M500 0 V300 M600 0 V300 M700 0 V300 M800 0 V300 M900 0 V300 M1000 0 V300 M1100 0 V300"/>
+  </g>
+
+  <!-- left: name and claims -->
+  <rect x="80" y="62" width="168" height="26" rx="13" fill="#d97706"/>
+  <text x="164" y="80" text-anchor="middle" font-size="13" font-weight="700" fill="#0d1117">SENSEHIVE EXTENSION</text>
+  <text x="80" y="136" font-size="44" font-weight="600" fill="#c9d1d9">MQTT Heartbeat Service</text>
+  <rect x="80" y="150" width="220" height="4" rx="2" fill="#d97706"/>
+  <text x="80" y="190" font-size="19" fill="#8b949e">Encrypted heartbeats and a last will from every edge node</text>
+  <text x="80" y="222" font-size="15" fill="#6e7681">Outbound only • AES-256-GCM • rotating topics • about 34 MB RAM</text>
+  <text x="80" y="262" font-size="14" fill="#6e7681">Open Source • MIT License • amd64, arm64, armv7</text>
+
+  <!-- right: the path of one heartbeat -->
+  <g transform="translate(700,40)">
+    <!-- pulse trace -->
+    <path class="pulse" d="M0,40 H120 L135,40 L148,8 L162,72 L176,24 L188,40 H300 L315,40 L328,8 L342,72 L356,24 L368,40 H440"/>
+
+    <!-- heartbeat packets every 2.5 s -->
+    <circle class="pkt" r="5">
+      <animateMotion dur="2.5s" repeatCount="indefinite" path="M120,145 H330" keyPoints="0;1;1" keyTimes="0;0.6;1" calcMode="linear"/>
+      <animate attributeName="opacity" dur="2.5s" repeatCount="indefinite" values="1;1;0;0" keyTimes="0;0.58;0.6;1"/>
+    </circle>
+
+    <!-- edge node with its heart -->
+    <rect class="box" x="0" y="110" width="120" height="70" rx="10" stroke="#d97706"/>
+    <text class="lbl" x="60" y="140" text-anchor="middle">Edge node</text>
+    <text class="sub" x="60" y="158" text-anchor="middle">agent, its own key</text>
+    <circle class="ring" cx="108" cy="122" r="7"/>
+    <circle class="beat" cx="108" cy="122" r="7" fill="#f59e0b"/>
+
+    <!-- broker -->
+    <rect class="box" x="160" y="110" width="130" height="70" rx="10" stroke="#58a6ff"/>
+    <text class="lbl" x="225" y="140" text-anchor="middle">Public broker</text>
+    <text class="sub" x="225" y="158" text-anchor="middle">TLS 8883</text>
+
+    <!-- SenseHive -->
+    <rect class="box" x="330" y="110" width="130" height="70" rx="10" stroke="#3fb950"/>
+    <text class="lbl" x="395" y="140" text-anchor="middle">SenseHive</text>
+    <text class="sub" x="395" y="158" text-anchor="middle">online • silent • offline</text>
+
+    <path d="M120,145 H160 M290,145 H330" stroke="#30363d" stroke-width="2"/>
+
+    <!-- last will, held by the broker -->
+    <rect x="160" y="200" width="130" height="34" rx="8" fill="#161b22" stroke="#f87171" stroke-dasharray="4 4"/>
+    <text x="225" y="222" text-anchor="middle" font-size="12" fill="#f87171">last will: offline</text>
+    <circle class="lwt" r="4" opacity="0.9">
+      <animateMotion dur="5s" repeatCount="indefinite" path="M290,217 H365 V180" keyPoints="0;0;1;1" keyTimes="0;0.6;0.85;1" calcMode="linear"/>
+      <animate attributeName="opacity" dur="5s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.6;0.62;0.85;0.87;1"/>
+    </circle>
+    <path d="M290,217 H365 V182" fill="none" stroke="#30363d" stroke-width="1.5" stroke-dasharray="3 4"/>
+  </g>
+</svg>
