@@ -51,8 +51,32 @@ nodes by itself and serves their state through a read-only API.
 | No new attack surface on the node | No listening port; runs as an unprivileged user in a systemd sandbox; holds only its own key |
 | Easy to install anywhere | Three files and `install.sh`; OS packages only (no pip, nothing downloaded at run time); systemd or a plain background process |
 
-Measured on amd64 (Python 3.11, paho-mqtt 2.1) over one minute against a local
-broker; ARM boards are in the same range.
+### Resource usage (measured)
+
+On the node, one agent:
+
+| | Measured |
+|---|---|
+| Memory | **34 MB** resident (Python, TLS and crypto libraries); systemd caps it at 64 MB |
+| CPU | **0.08 s per minute**: about **0.1 %** of one core, including start-up |
+| Network | one **120-byte** message (plus a 31-byte topic) every 10 s: about **1 MB a day** of payload before MQTT and TLS framing |
+| Disk | four small files in /opt/edgeshell-heartbeat, about 16 KB; nothing written at run time (logs go to the journal) |
+| Ports | none listening; one outbound connection |
+
+On the receiver ([SenseHive](https://github.com/855princekumar/sense-hive/blob/main/docs/PERFORMANCE.md)),
+**500 agents** at the default interval (50 messages/s to decrypt and verify):
+
+| | Measured |
+|---|---|
+| CPU | **8.7 %** of one core (0.04 % idle) |
+| Memory | **34 MB** (28 MB idle) |
+| Heartbeats refused | 0; all 500 nodes online |
+| `GET /api/heartbeat/nodes` with 500 nodes | 4.7 ms p50, 5.2 ms p95 |
+
+Agent: amd64, Python 3.11, paho-mqtt 2.1, one minute against a local Mosquitto
+broker. Receiver: SenseHive 1.4.2 in Docker, 500 simulated agents, two minutes.
+Both on an Intel Core i7-1185G7 laptop; ARM boards use the same memory and a
+few times the CPU share, still a fraction of one percent for the agent.
 
 ## How it works
 
