@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/banner.svg" alt="MQTT Heartbeat Service, a SenseHive extension" width="100%" />
+</p>
+
 # MQTT Heartbeat Service
 
 [![CI](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/ci.yml/badge.svg)](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/ci.yml)
@@ -10,16 +14,22 @@
 ![Footprint](https://img.shields.io/badge/footprint-~34%20MB%20RAM%20%7C%20~0.1%25%20CPU-brightgreen)
 ![Encryption](https://img.shields.io/badge/encryption-AES--256--GCM-success)
 ![MQTT LWT](https://img.shields.io/badge/MQTT-last%20will%20(LWT)-orange)
-[![Receiver: SenseHive](https://img.shields.io/badge/receiver-SenseHive-d97706)](https://github.com/855princekumar/sense-hive)
-[![Part of EdgeShell](https://img.shields.io/badge/part%20of-EdgeShell-1a56db)](https://github.com/855princekumar/edgeshell)
+[![SenseHive extension](https://img.shields.io/badge/SenseHive-extension-d97706)](https://github.com/855princekumar/sense-hive)
+[![Works with EdgeShell](https://img.shields.io/badge/works%20with-EdgeShell-1a56db)](https://github.com/855princekumar/edgeshell)
 
 A tiny worker for every edge node. It tells a receiver **"this node is alive"**
 every 10 seconds over a **public MQTT broker**, encrypted and authenticated, and
 leaves an MQTT **last will** so the receiver also learns when the node drops.
 It needs no VPN, no inbound port and no per-node setup on the receiver.
 
-It is the second, independent health signal for
-[EdgeShell](https://github.com/855princekumar/edgeshell): when the VPN glitches
+**A SenseHive extension, and an independent project.** The agent runs on the
+nodes; [SenseHive](https://github.com/855princekumar/sense-hive) is its
+receiver and dashboard. Each repository has its own releases, tests and
+security policy, and you can run the agent with SenseHive alone, without
+EdgeShell.
+
+In an [EdgeShell](https://github.com/855princekumar/edgeshell) fleet it is the
+second, independent health signal: when the VPN glitches
 but the internet works, heartbeats keep arriving, so uptime (SLA) is measured
 precisely instead of counting VPN outages as node downtime. The receiver is
 [SenseHive](https://github.com/855princekumar/sense-hive), which finds the
