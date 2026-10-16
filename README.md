@@ -209,7 +209,7 @@ python tests/live_check.py --broker broker.hivemq.com
 | Project | Role |
 |---|---|
 | [EdgeShell](https://github.com/855princekumar/edgeshell) | Fleet control plane: installs this agent, shows heartbeat status, uptime and SLA |
-| [SenseHive](https://github.com/855princekumar/sense-hive) | The receiver: verifies heartbeats, finds nodes by itself, read-only API; also an MQTT data logger |
+| [SenseHive](https://github.com/855princekumar/sense-hive) | The receiver: verifies heartbeats, finds nodes by itself, read-only API; also logs MQTT topics on a dashboard |
 | [OpenRemoteGUI](https://github.com/855princekumar/OpenRemoteGUI) | Browser remote desktop on nodes |
 | [Pi Fleet Emulator](https://github.com/855princekumar/pi-fleet-emulator) | Emulated Raspberry Pi fleet for testing |
 
