@@ -1,42 +1,112 @@
 # MQTT Heartbeat Service
 
 [![CI](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/ci.yml/badge.svg)](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/codeql.yml/badge.svg)](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/codeql.yml)
+![Release](https://img.shields.io/badge/release-v1.1.0-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
-![Python 3.7+](https://img.shields.io/badge/python-3.7%2B-blue)
+![Python 3.7+](https://img.shields.io/badge/python-3.7%2B-3776AB?logo=python&logoColor=white)
+![paho-mqtt 1.6 and 2.x](https://img.shields.io/badge/paho--mqtt-1.6%20%7C%202.x-660066)
+![Platforms](https://img.shields.io/badge/platforms-amd64%20%7C%20arm64%20%7C%20armv7-informational)
+![Footprint](https://img.shields.io/badge/footprint-~34%20MB%20RAM%20%7C%20~0.1%25%20CPU-brightgreen)
+![Encryption](https://img.shields.io/badge/encryption-AES--256--GCM-success)
+![MQTT LWT](https://img.shields.io/badge/MQTT-last%20will%20(LWT)-orange)
+[![Receiver: SenseHive](https://img.shields.io/badge/receiver-SenseHive-d97706)](https://github.com/855princekumar/sense-hive)
+[![Part of EdgeShell](https://img.shields.io/badge/part%20of-EdgeShell-1a56db)](https://github.com/855princekumar/edgeshell)
 
-A tiny agent that tells a receiver "this node is alive" every few seconds over
-a **public MQTT broker**, independent of any VPN. It is the second, independent
-health signal for [EdgeShell](https://github.com/855princekumar/edgeshell): when
-the VPN glitches but the internet works, heartbeats keep arriving, so uptime
-(SLA) is measured precisely instead of counting VPN outages as node downtime.
-The receiver is [SenseHive](https://github.com/855princekumar/sense-hive).
+A tiny worker for every edge node. It tells a receiver **"this node is alive"**
+every 10 seconds over a **public MQTT broker**, encrypted and authenticated, and
+leaves an MQTT **last will** so the receiver also learns when the node drops.
+It needs no VPN, no inbound port and no per-node setup on the receiver.
+
+It is the second, independent health signal for
+[EdgeShell](https://github.com/855princekumar/edgeshell): when the VPN glitches
+but the internet works, heartbeats keep arriving, so uptime (SLA) is measured
+precisely instead of counting VPN outages as node downtime. The receiver is
+[SenseHive](https://github.com/855princekumar/sense-hive), which finds the
+nodes by itself and serves their state through a read-only API.
+
+![Architecture of the MQTT heartbeat agent](docs/assets/architecture.svg)
 
 ## Contents
 
-1. [How it works](#how-it-works)
-2. [Security on a public broker](#security-on-a-public-broker)
-3. [Install](#install)
-4. [Configuration and hot reload](#configuration-and-hot-reload)
-5. [Operate](#operate)
-6. [Tests and CI](#tests-and-ci)
+1. [Why a lightweight heartbeat worker](#why-a-lightweight-heartbeat-worker)
+2. [How it works](#how-it-works)
+3. [Works with SenseHive, EdgeShell and MQTT last wills](#works-with-sensehive-edgeshell-and-mqtt-last-wills)
+4. [Security on a public broker](#security-on-a-public-broker)
+5. [Install](#install) (full guide: [docs/SETUP.md](docs/SETUP.md))
+6. [Configuration and hot reload](#configuration-and-hot-reload)
+7. [Operate](#operate)
+8. [Tests and CI](#tests-and-ci)
+9. [Related projects](#related-projects)
+
+## Why a lightweight heartbeat worker
+
+| Need | How the agent meets it |
+|---|---|
+| Know a node is up when the VPN or SSH path is down | It uses a different path: one outbound TLS connection to a public MQTT broker |
+| Tell "node down" from "network path down" | The broker publishes the node's **last will** when its connection drops (`offline`); if nothing arrives at all, the receiver shows `silent` instead |
+| Run on small devices for years | About **34 MB** of memory and **0.1 %** of one CPU core (measured), capped by systemd at 64 MB and 10 % |
+| Little bandwidth, also on mobile links | One **120-byte** message every 10 s: about 1 MB a day before MQTT and TLS framing |
+| Nothing to maintain per node | Settings in one `config.yaml` for the whole fleet, **hot reloaded**; the receiver needs no list of nodes |
+| No new attack surface on the node | No listening port; runs as an unprivileged user in a systemd sandbox; holds only its own key |
+| Easy to install anywhere | Three files and `install.sh`; OS packages only (no pip, nothing downloaded at run time); systemd or a plain background process |
+
+Measured on amd64 (Python 3.11, paho-mqtt 2.1) over one minute against a local
+broker; ARM boards are in the same range.
 
 ## How it works
 
-```mermaid
-flowchart LR
-  A[Node agent<br/>/opt/edgeshell-heartbeat] -- "encrypted heartbeat every 10 s<br/>signed last will (LWT)" --> B[(Public MQTT broker<br/>TLS 8883)]
-  B --> C[SenseHive<br/>verifies and decrypts]
-  C -- "read-only JSON API" --> D[EdgeShell<br/>SLA, node cards]
-```
+![How the MQTT heartbeat works](docs/assets/heartbeat-flow.svg)
 
-| Message | When | Meaning |
+1. **Identity.** Each node has an `agent.env` with its name, a key id, **its
+   own node key** and the fleet's topic key, all derived from a fleet master
+   key that the node never sees (`heartbeat_protocol.provision`).
+2. **Connect.** The agent opens one TLS connection (certificate verified) with
+   a random client id and registers a **last will**: an encrypted `lwt`
+   message for this session that the broker publishes if the connection drops.
+3. **Birth.** It sends `birth` as soon as it is connected.
+4. **Beat.** Every `interval` seconds (10) it sends an encrypted `hb` with the
+   time and a counter.
+5. **Rotate.** Topics are derived from the topic key and change every 10
+   minutes. At each new window the agent reconnects on the new topic with a
+   new will.
+6. **Reload.** On every beat it checks `config.yaml` and applies changes at
+   once (interval, broker, port, TLS) without a restart.
+
+| Message | When | Receiver shows |
 |---|---|---|
-| `birth` | the agent connects | the node is up |
-| `hb` | every `interval` seconds (10) | the node is still up |
-| `lwt` | the broker publishes it if the agent's connection drops | the node is gone |
+| `birth` | the agent connects | `online` |
+| `hb` | every `interval` seconds (10) | `online` |
+| `lwt` | the broker publishes it if the agent's connection drops | `offline` |
+| (nothing) | broker or internet path down | `silent` after 35 s, not the node's fault |
 
-No heartbeat for a while without a last will means the path is broken (broker
-or internet), shown as **silent**, not as offline.
+![Heartbeat lifecycle and node states](docs/assets/lifecycle.svg)
+
+Every message is `version | key id | nonce | AES-256-GCM ciphertext`. The
+ciphertext holds only `{name, kind, time, session, counter, agent version}`.
+
+## Works with SenseHive, EdgeShell and MQTT last wills
+
+- **SenseHive** ([repository](https://github.com/855princekumar/sense-hive),
+  [heartbeat guide](https://github.com/855princekumar/sense-hive/blob/main/docs/HEARTBEAT.md))
+  is the receiver. Give it the fleet master key (`HEARTBEAT_MASTER_KEY`) and it
+  computes the topics, derives each sender's key from the key id in the
+  message, verifies it, and shows a node on its **first heartbeat**: there is
+  nothing to add per node. Its `/heartbeats` page and read-only API
+  (`/api/heartbeat/status`, `nodes`, `minutes`, `events`) serve the state to
+  EdgeShell, Grafana, Node-RED, Home Assistant or scripts. SenseHive's normal
+  MQTT logging (topics you add) keeps working next to it.
+- **EdgeShell** ([repository](https://github.com/855princekumar/edgeshell))
+  installs and updates the agent from **Fleet Setup** over SSH, writes each
+  node's `agent.env`, pushes `config.yaml` to the whole fleet, and shows
+  heartbeat badges, uptime and SLA on its node cards.
+- **MQTT last will (LWT):** standard MQTT 3.1.1, so any broker works (HiveMQ,
+  EMQX, Mosquitto, your own). The will is encrypted and carries the session
+  (the connect time), so an old will can never mark a live, reconnected node
+  offline.
+- **The protocol** is one file, [`heartbeat_protocol.py`](heartbeat_protocol.py),
+  identical in the agent, SenseHive and EdgeShell and pinned by shared test
+  vectors. Any receiver that implements it can read the fleet.
 
 ## Security on a public broker
 
@@ -56,15 +126,16 @@ every message is visible to strangers and that strangers will try to inject.
 
 Keys: one 32-byte **master key** lives only with the receiver (SenseHive) and
 the provisioner (EdgeShell). A node gets only what it needs (its node key, its
-key id and the topic key), never the master key. Details:
-[`heartbeat_protocol.py`](heartbeat_protocol.py) (the same file is used by the
-agent, SenseHive and EdgeShell, pinned by test vectors).
+key id and the topic key), never the master key. See also
+[SECURITY.md](SECURITY.md).
 
 ## Install
 
-EdgeShell installs it from **Node Fleet, Fleet Setup, Heartbeat agent** (one
-node or the whole fleet). By hand, on a node, with the two files and an
-`agent.env` written for that node:
+**With EdgeShell:** **Node Fleet, Fleet Setup, Heartbeat agent**; tick a test
+group first, then the fleet.
+
+**By hand** (full walkthrough, including making `agent.env` and checking the
+node appears in SenseHive: [docs/SETUP.md](docs/SETUP.md)):
 
 ```bash
 sudo bash install.sh agent.env      # install or update
@@ -115,7 +186,7 @@ journalctl -u edgeshell-heartbeat -f      # connects, reloads, retries
 ```
 
 The agent reconnects by itself with backoff (2 s up to 60 s) when the broker
-or the internet is away.
+or the internet is away. Troubleshooting: [docs/SETUP.md](docs/SETUP.md#troubleshooting).
 
 ## Tests and CI
 
@@ -124,13 +195,23 @@ or the internet is away.
 | Unit tests on Python 3.9, 3.11, 3.12, 3.13 with paho-mqtt 1.6 and 2.1 | protocol vectors, tampering, forgery, replay, impersonation between nodes, stale last wills, hot reload (valid, invalid, missing file) |
 | Real broker (Mosquitto) | birth and heartbeats arrive and verify, forged messages are rejected, the signed last will arrives after a connection is cut |
 | systemd install (Debian 12) | runs as `hbagent` with hardening, file modes, hot reload with no restart, an update keeps a pushed config, uninstall removes everything |
-| Bandit, gitleaks, lint | no risky code, no secrets in history |
+| Install without systemd (Ubuntu 22.04 container) | the background-process mode installs, beats and uninstalls |
+| Bandit, gitleaks, CodeQL, lint | no risky code, no secrets in history |
 
 Against the real public broker (optional, outside CI):
 
 ```bash
 python tests/live_check.py --broker broker.hivemq.com
 ```
+
+## Related projects
+
+| Project | Role |
+|---|---|
+| [EdgeShell](https://github.com/855princekumar/edgeshell) | Fleet control plane: installs this agent, shows heartbeat status, uptime and SLA |
+| [SenseHive](https://github.com/855princekumar/sense-hive) | The receiver: verifies heartbeats, finds nodes by itself, read-only API; also an MQTT data logger |
+| [OpenRemoteGUI](https://github.com/855princekumar/OpenRemoteGUI) | Browser remote desktop on nodes |
+| [Pi Fleet Emulator](https://github.com/855princekumar/pi-fleet-emulator) | Emulated Raspberry Pi fleet for testing |
 
 ## License
 

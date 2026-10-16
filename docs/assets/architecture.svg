@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 550" font-family="Segoe UI,Roboto,Helvetica,Arial,sans-serif" role="img" aria-labelledby="title desc">
+  <title id="title">MQTT heartbeat agent architecture</title>
+  <desc id="desc">On each edge node the agent runs as a hardened systemd service under its own user, with its files in /opt/edgeshell-heartbeat. Every interval it reloads its settings if changed, moves to the new topic when the ten-minute window changes, seals a heartbeat with AES-256-GCM and publishes it outbound over TLS to a public MQTT broker. SenseHive receives and verifies it and serves the state through a read-only API. EdgeShell can provision the agent over SSH.</desc>
+  <defs>
+    <marker id="ad" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#334155"/>
+    </marker>
+    <marker id="ao" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#d97706"/>
+    </marker>
+    <marker id="ab" markerWidth="10" markerHeight="10" refX="8" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#1a56db"/>
+    </marker>
+    <style>
+      .tt{font-size:15px;font-weight:700;fill:#0f172a}
+      .t{font-size:12.5px;font-weight:700;fill:#0f172a}
+      .lbl{font-size:11px;fill:#475569}
+      .mut{font-size:11px;fill:#64748b}
+      .mono{font-size:10.5px;fill:#0f172a;font-family:Consolas,Menlo,monospace}
+      .hd{font-size:13px;font-weight:700;fill:#fff}
+      .hs{font-size:10.5px;fill:#d1fae5}
+      .num{font-size:10.5px;font-weight:700;fill:#fff}
+    </style>
+  </defs>
+  <rect width="1000" height="550" fill="#f8fafc"/>
+  <text x="30" y="34" class="tt" font-size="18">MQTT heartbeat agent</text>
+  <text x="30" y="54" class="mut">A lightweight worker on every node: one outbound TLS connection, an encrypted heartbeat every 10 s, a last will for when the node drops.</text>
+
+  <!-- Node -->
+  <rect x="30" y="76" width="530" height="456" rx="14" fill="#fff" stroke="#059669" stroke-width="2"/>
+  <path d="M44,76 H546 A14,14 0 0 1 560,90 V112 H30 V90 A14,14 0 0 1 44,76 Z" fill="#059669"/>
+  <text x="46" y="99" class="hd">Edge node: Raspberry Pi, gateway or any Linux (amd64, arm64, armv7)</text>
+
+  <rect x="48" y="124" width="494" height="64" rx="8" fill="#ecfdf5" stroke="#6ee7b7"/>
+  <text x="62" y="145" class="t">systemd: edgeshell-heartbeat.service</text>
+  <text x="62" y="163" class="lbl">runs as hbagent (no login), read-only system, no capabilities, no new privileges</text>
+  <text x="62" y="179" class="lbl">MemoryMax=64M, CPUQuota=10%, restarts by itself (background process without systemd)</text>
+
+  <rect x="48" y="200" width="236" height="176" rx="8" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="62" y="221" class="t">/opt/edgeshell-heartbeat</text>
+  <text x="62" y="242" class="mono">heartbeat_agent.py</text>
+  <text x="62" y="258" class="mono">heartbeat_protocol.py</text>
+  <text x="62" y="282" class="mono">agent.env</text>
+  <text x="62" y="297" class="lbl">root:hbagent 0640: name, key id,</text>
+  <text x="62" y="312" class="lbl">its node key, the topic key</text>
+  <text x="62" y="336" class="mono">config.yaml</text>
+  <text x="62" y="351" class="lbl">broker, port, TLS, interval;</text>
+  <text x="62" y="366" class="lbl">no secrets, hot reloaded</text>
+
+  <rect x="296" y="200" width="246" height="176" rx="8" fill="#f0fdf4" stroke="#86efac"/>
+  <text x="310" y="221" class="t">The loop, every interval</text>
+  <circle cx="318" cy="242" r="8" fill="#059669"/><text x="318" y="246" class="num" text-anchor="middle">1</text>
+  <text x="332" y="246" class="lbl">reload config.yaml if it changed</text>
+  <circle cx="318" cy="266" r="8" fill="#059669"/><text x="318" y="270" class="num" text-anchor="middle">2</text>
+  <text x="332" y="270" class="lbl">new 10-minute window? reconnect</text>
+  <text x="332" y="285" class="lbl">with the new topic and a new will</text>
+  <circle cx="318" cy="305" r="8" fill="#059669"/><text x="318" y="309" class="num" text-anchor="middle">3</text>
+  <text x="332" y="309" class="lbl">seal the heartbeat (AES-256-GCM)</text>
+  <circle cx="318" cy="329" r="8" fill="#059669"/><text x="318" y="333" class="num" text-anchor="middle">4</text>
+  <text x="332" y="333" class="lbl">publish (QoS 1), sleep</text>
+  <text x="310" y="362" class="lbl">broker away: retries, 2 s up to 60 s</text>
+
+  <rect x="48" y="388" width="494" height="128" rx="8" fill="#0f172a"/>
+  <text x="62" y="410" font-size="12.5" font-weight="700" fill="#fff">Footprint (measured)</text>
+  <text x="62" y="430" font-size="11" fill="#e2e8f0">about 34 MB of memory (Python, TLS, crypto), about 0.1 % of one CPU core</text>
+  <text x="62" y="448" font-size="11" fill="#e2e8f0">one 120-byte message every 10 s: about 1 MB a day before MQTT and TLS framing</text>
+  <text x="62" y="466" font-size="11" fill="#e2e8f0">OS packages only: python3-paho-mqtt, python3-yaml, python3-cryptography</text>
+  <text x="62" y="484" font-size="11" fill="#e2e8f0">no inbound port, no pip, nothing downloaded at run time</text>
+  <text x="62" y="502" font-size="11" fill="#e2e8f0">sends only name, time, session, counter, kind, version: never data or addresses</text>
+
+  <!-- EdgeShell -->
+  <rect x="620" y="76" width="350" height="94" rx="12" fill="#fff" stroke="#1a56db" stroke-width="1.5"/>
+  <text x="636" y="100" class="t">EdgeShell (optional provisioner)</text>
+  <text x="636" y="119" class="lbl">Fleet Setup: over SSH, writes this node's</text>
+  <text x="636" y="135" class="lbl">agent.env and runs install.sh (a test group first)</text>
+  <text x="636" y="151" class="lbl">pushes one config.yaml to every node</text>
+  <line x1="618" y1="140" x2="564" y2="140" stroke="#1a56db" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#ab)"/>
+  <text x="591" y="132" class="lbl" text-anchor="middle">SSH</text>
+
+  <!-- broker -->
+  <rect x="620" y="206" width="350" height="94" rx="12" fill="#fffbeb" stroke="#d97706" stroke-width="1.5"/>
+  <text x="636" y="230" class="t">Public MQTT broker (TLS 8883)</text>
+  <text x="636" y="249" class="lbl">encrypted birth, hb and last will</text>
+  <text x="636" y="265" class="lbl">random-looking topics, new every 10 minutes</text>
+  <text x="636" y="281" class="lbl">any broker: HiveMQ, EMQX, your Mosquitto</text>
+  <line x1="562" y1="288" x2="616" y2="262" stroke="#d97706" stroke-width="2.5" marker-end="url(#ao)"/>
+  <text x="586" y="300" class="lbl" text-anchor="middle">outbound</text>
+  <text x="586" y="314" class="lbl" text-anchor="middle">only</text>
+
+  <!-- SenseHive -->
+  <line x1="795" y1="300" x2="795" y2="334" stroke="#d97706" stroke-width="2.5" marker-end="url(#ao)"/>
+  <rect x="620" y="336" width="350" height="94" rx="12" fill="#fff" stroke="#d97706" stroke-width="1.5"/>
+  <text x="636" y="360" class="t">SenseHive (the receiver)</text>
+  <text x="636" y="379" class="lbl">finds every node by itself from the master key</text>
+  <text x="636" y="395" class="lbl">verifies, then online / offline / silent,</text>
+  <text x="636" y="411" class="lbl">uptime minutes and status changes</text>
+
+  <line x1="795" y1="430" x2="795" y2="458" stroke="#334155" stroke-width="2" marker-end="url(#ad)"/>
+  <rect x="620" y="460" width="350" height="72" rx="12" fill="#eff6ff" stroke="#bfdbfe" stroke-width="1.5"/>
+  <text x="636" y="484" class="t">Read-only API (bearer token)</text>
+  <text x="636" y="503" class="lbl">EdgeShell badges, uptime and SLA;</text>
+  <text x="636" y="519" class="lbl">Grafana, Node-RED, Home Assistant, scripts</text>
+</svg>
