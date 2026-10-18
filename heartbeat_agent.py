@@ -26,7 +26,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import heartbeat_protocol as hp  # noqa: E402
 
-__version__ = '1.1.0'
+__version__ = '1.1.1'
 HOME = os.environ.get('HB_HOME', '/opt/edgeshell-heartbeat')
 IDENTITY = os.path.join(HOME, 'agent.env')
 SETTINGS = os.path.join(HOME, 'config.yaml')

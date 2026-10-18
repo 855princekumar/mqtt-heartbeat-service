@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/ci.yml/badge.svg)](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/codeql.yml/badge.svg)](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/codeql.yml)
-![Release](https://img.shields.io/badge/release-v1.1.0-blue)
+![Release](https://img.shields.io/badge/release-v1.1.1-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Python 3.7+](https://img.shields.io/badge/python-3.7%2B-3776AB?logo=python&logoColor=white)
 ![paho-mqtt 1.6 and 2.x](https://img.shields.io/badge/paho--mqtt-1.6%20%7C%202.x-660066)
@@ -165,16 +165,39 @@ key id and the topic key), never the master key. See also
 
 ## Install
 
-**With EdgeShell:** **Node Fleet, Fleet Setup, Heartbeat agent**; tick a test
-group first, then the fleet.
+**On the node, with a join token from SenseHive** (no EdgeShell needed):
 
-**By hand** (full walkthrough, including making `agent.env` and checking the
-node appears in SenseHive: [docs/SETUP.md](docs/SETUP.md)):
+1. In SenseHive (1.8+): **Heartbeats, Add node**, a name for this node, **Create token**.
+2. On the node, over SSH or at its own screen:
+
+   ```bash
+   git clone https://github.com/855princekumar/mqtt-heartbeat-service
+   cd mqtt-heartbeat-service
+   sudo python3 setup.py           # paste the join token when asked (it is not shown)
+   ```
+
+3. The node appears on SenseHive's Heartbeats page within seconds, by itself.
+
+`setup.py` checks the token (a cut or changed paste is refused), writes this
+node's `agent.env` and `config.yaml` (the broker SenseHive listens on), and runs
+`install.sh`: the hardened systemd service below, started now and at boot.
 
 ```bash
-sudo bash install.sh agent.env      # install or update
-sudo bash install.sh --uninstall    # remove everything
+sudo python3 setup.py --status      # running? which node, which fleet
+sudo python3 setup.py --uninstall   # remove everything
+git pull && sudo python3 setup.py   # update (paste the token again)
 ```
+
+The token holds this node's name and keys and the broker, **never the fleet
+master key**. Every SenseHive has its own fleet: nodes set up from one
+SenseHive's tokens never appear in another's, even on the same public broker
+(`setup.py --status` and SenseHive's **Add node** show the same fleet id).
+
+**With EdgeShell:** **Node Fleet, Fleet Setup, Heartbeat agent**; tick a test
+group first, then the fleet. EdgeShell does the same over SSH for many nodes.
+
+**By hand, step by step** (making `agent.env` yourself from the master key):
+[docs/SETUP.md](docs/SETUP.md#c-by-hand-with-the-master-key).
 
 Requirements: Python 3.7+, and the OS packages `python3-paho-mqtt`,
 `python3-yaml`, `python3-cryptography` (installed automatically with apt; no
@@ -230,6 +253,8 @@ or the internet is away. Troubleshooting: [docs/SETUP.md](docs/SETUP.md#troubles
 | Real broker (Mosquitto) | birth and heartbeats arrive and verify, forged messages are rejected, the signed last will arrives after a connection is cut |
 | systemd install (Debian 12) | runs as `hbagent` with hardening, file modes, hot reload with no restart, an update keeps a pushed config, uninstall removes everything |
 | Install without systemd (Ubuntu 22.04 container) | the background-process mode installs, beats and uninstalls |
+| Join token end to end (with SenseHive) | SenseHive issues a token, `setup.py` installs a real systemd service on Debian 12, the node appears online by itself, a second SenseHive on the same broker never sees it, a cut token installs nothing, uninstall removes everything |
+| `setup.py` unit tests | tokens read exactly as SenseHive makes them, never the master key, cut, edited and hostile tokens refused with a plain reason |
 | Bandit, gitleaks, CodeQL, lint | no risky code, no secrets in history |
 
 Against the real public broker (optional, outside CI):

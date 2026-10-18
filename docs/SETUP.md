@@ -5,8 +5,9 @@ that matches your setup:
 
 | Path | Use it when |
 |---|---|
-| [A. With EdgeShell](#a-with-edgeshell) | EdgeShell manages your nodes (recommended: it does every step for you) |
-| [B. By hand, with SenseHive](#b-by-hand-with-sensehive) | you run SenseHive on its own, or want to understand each step |
+| [A. With EdgeShell](#a-with-edgeshell) | EdgeShell manages your nodes: it installs on many nodes for you |
+| [B. On the node with a join token](#b-on-the-node-with-a-join-token) | you run SenseHive on its own: one command on each node (recommended without EdgeShell) |
+| [C. By hand, with the master key](#c-by-hand-with-the-master-key) | you want to understand or script each step |
 
 ![Architecture](assets/architecture.svg)
 
@@ -37,7 +38,46 @@ that matches your setup:
 Changing settings for every node (broker, interval) is a push of one
 `config.yaml` from EdgeShell; the agents pick it up without a restart.
 
-## B. By hand, with SenseHive
+## B. On the node with a join token
+
+Needs SenseHive 1.8 or newer with its heartbeat receiver on
+(`HEARTBEAT_MASTER_KEY=auto` is enough: a private fleet key for that SenseHive).
+
+1. **In SenseHive:** **Heartbeats**, **Add node**, a name for the node (letters,
+   digits, dots, dashes, underscores), **Create token**. Copy the token.
+2. **On the node** (over SSH or at its own screen):
+
+   ```bash
+   git clone https://github.com/855princekumar/mqtt-heartbeat-service
+   cd mqtt-heartbeat-service
+   sudo python3 setup.py
+   ```
+
+   Paste the token when asked (it is not shown, and not kept in your shell
+   history). `setup.py`:
+
+   - checks the token: a cut, wrapped-and-damaged or edited paste is refused
+     with a plain reason, and nothing is installed;
+   - writes `config.yaml` with the broker SenseHive listens on (an `interval`
+     set before is kept);
+   - writes this node's `agent.env` (its name and keys, never the master key)
+     and runs `install.sh` (the hardened systemd service, see step 3 of path C);
+   - leaves no copy of the token or the keys anywhere but `/opt/edgeshell-heartbeat`.
+
+3. **Check:** the node shows **online** on SenseHive's Heartbeats page within
+   seconds. On the node: `sudo python3 setup.py --status` names the node and
+   its **fleet**; SenseHive's **Add node** shows the same fleet.
+
+For scripts: `HB_JOIN_TOKEN=... sudo -E python3 setup.py`, or
+`sudo python3 setup.py --token-file token.txt` (the file is deleted after a
+good install). `sudo python3 setup.py --check TOKEN` only checks a token.
+
+**Isolation.** Every SenseHive has its own fleet master key, so its tokens only
+work with it. Nodes of another SenseHive (another person or company) on the
+same public broker use other topics and other keys: they never appear on your
+dashboard, and yours never appear on theirs.
+
+## C. By hand, with the master key
 
 ### 1. Make the fleet master key and turn the receiver on
 
@@ -100,7 +140,7 @@ On the node:
 ```bash
 systemctl status edgeshell-heartbeat
 journalctl -u edgeshell-heartbeat -n 20
-# heartbeat: agent 1.1.0 for pi-node-01: broker.hivemq.com:8883 tls=on every 10s (config: ...)
+# heartbeat: agent 1.1.1 for pi-node-01: broker.hivemq.com:8883 tls=on every 10s (config: ...)
 ```
 
 In SenseHive: the node appears on the **Heartbeats** page as `online` within
