@@ -134,12 +134,14 @@ def main():
         out = node_run(a.node, 'cd /root/mqtt-heartbeat-service && python3 setup.py --check "$T"', {'T': made['token']})
         check(f"node {name}, fleet {made['fleet']}" in out, 'setup.py checks the token and shows the same fleet')
         bad = node_run(a.node, 'cd /root/mqtt-heartbeat-service && HB_JOIN_TOKEN="${T%???}" python3 setup.py',
-                       {'T': made['token']}, check=False)
+                       {'T': made['token'], 'HB_MQTT_USERNAME': 'admin', 'HB_MQTT_PASSWORD': 'admin123'}, check=False)
         check('Not set up' in bad and not node_run(a.node, 'ls /opt/edgeshell-heartbeat/agent.env 2>/dev/null', check=False).strip(),
               'a cut token is refused and installs nothing')
 
         t0 = time.time()
-        out = node_run(a.node, 'cd /root/mqtt-heartbeat-service && HB_JOIN_TOKEN="$T" python3 setup.py', {'T': made['token']})
+        login = {'HB_MQTT_USERNAME': 'admin', 'HB_MQTT_PASSWORD': 'admin123'}       # this test broker accepts any login
+        out = node_run(a.node, 'cd /root/mqtt-heartbeat-service && HB_JOIN_TOKEN="$T" python3 setup.py',
+                       dict(login, T=made['token']))
         stats['setup_s'] = round(time.time() - t0, 1)
         check('HEARTBEAT_OK' in out and 'Done.' in out, 'setup.py installs the agent', out[-400:])
         unit = node_run(a.node, 'systemctl is-active edgeshell-heartbeat; systemctl is-enabled edgeshell-heartbeat; '
