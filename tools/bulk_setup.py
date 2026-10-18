@@ -159,14 +159,33 @@ class ParamikoSSH:
             raise SystemExit('ssh.password is set: pip install paramiko (or use SSH keys)') from None
         self.paramiko, self.cfg = paramiko, cfg['ssh']
 
+    def _policy(self):
+        """Like ssh -o StrictHostKeyChecking=accept-new: a node seen for the first time is
+        remembered in the known hosts file; a node whose key changed is refused (paramiko
+        raises BadHostKeyException for a known host with another key)."""
+        known = os.path.expanduser(self.cfg.get('known_hosts_file') or '~/.ssh/known_hosts')
+        paramiko = self.paramiko
+
+        class AcceptNew(paramiko.MissingHostKeyPolicy):
+            def missing_host_key(self, client, hostname, key):
+                client.get_host_keys().add(hostname, key.get_name(), key)
+                os.makedirs(os.path.dirname(known) or '.', exist_ok=True)
+                client.save_host_keys(known)
+        return known, AcceptNew()
+
     def run(self, n, command, stdin=b'', timeout=300):
         c = self.paramiko.SSHClient()
-        c.set_missing_host_key_policy(self.paramiko.AutoAddPolicy())
+        known, policy = self._policy()
+        if os.path.isfile(known):
+            c.load_host_keys(known)
+        c.set_missing_host_key_policy(policy)
         try:
             c.connect(n['host'], port=n['port'], username=n['user'], password=self.cfg['password'],
                       key_filename=os.path.expanduser(self.cfg['key_file']) if self.cfg.get('key_file') else None,
                       timeout=self.cfg['connect_timeout'], allow_agent=True, look_for_keys=True)
-            i, o, _ = c.exec_command(command, timeout=timeout, get_pty=False)
+            # Bandit B601 reviewed: `command` is built in this file from fixed text and
+            # shlex.quote(); node names, tokens and passwords travel on stdin, never in it
+            i, o, _ = c.exec_command(command, timeout=timeout, get_pty=False)  # nosec B601
             if stdin:
                 i.write(stdin)
             i.channel.shutdown_write()
@@ -264,11 +283,15 @@ def sensehive_online(cfg, names, wait=90):
     url, token = cfg['sensehive'].get('url', '').rstrip('/'), cfg['sensehive'].get('api_token', '')
     if not url or not token:
         return None
+    if not url.startswith(('http://', 'https://')):
+        print(f'sensehive.url must start with http:// or https:// (got {url[:40]!r}); not checked')
+        return None
     req = urllib.request.Request(url + '/api/heartbeat/nodes', headers={'Authorization': f'Bearer {token}'})
     end, online = time.time() + wait, set()
     while time.time() < end:
         try:
-            nodes = json.load(urllib.request.urlopen(req, timeout=10)).get('nodes', [])
+            # Bandit B310 reviewed: the URL is SenseHive's address from bulk.yaml, http(s) only (checked above)
+            nodes = json.load(urllib.request.urlopen(req, timeout=10)).get('nodes', [])  # nosec B310
             online = {x['name'] for x in nodes if x.get('status') == 'online'}
         except Exception:                                            # noqa: BLE001 - keep trying
             pass
