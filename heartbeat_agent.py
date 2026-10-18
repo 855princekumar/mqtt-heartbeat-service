@@ -112,6 +112,13 @@ class CredentialsFile:
 
 # ---------------------------------------------------------------- reaching the broker
 
+def tls_context():
+    """The system CA store, the certificate and host name verified, TLS 1.2 or newer."""
+    ctx = ssl.create_default_context()
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+    return ctx
+
+
 def candidates(s):
     """(name, port, websocket, tls) to try, in order: `prefer` (the way setup.py found
     working), else the configured one (port and tls), then, with fallback on, the
@@ -196,7 +203,7 @@ def probe(host, port, tls, ws=False, ws_path='/mqtt', user=None, password=None, 
         sock.settimeout(timeout)
         if tls:
             try:
-                sock = ssl.create_default_context().wrap_socket(sock, server_hostname=host)
+                sock = tls_context().wrap_socket(sock, server_hostname=host)
             except (ssl.SSLError, OSError) as e:
                 return -2, f'TLS failed ({type(e).__name__})'
         rest = _ws_open(sock, host, ws_path) if ws else b''
@@ -372,7 +379,7 @@ class Agent:
         if ws:
             c.ws_set_options(path=s['ws_path'])
         if tls:
-            c.tls_set()                                     # system CA store, certificate verified
+            c.tls_set_context(tls_context())                # system CA store, certificate verified, TLS 1.2+
         user, password = self.credentials.current
         if user:
             c.username_pw_set(user, password)

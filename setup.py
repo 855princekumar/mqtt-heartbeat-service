@@ -137,6 +137,17 @@ def read_env_file(path):
     return out
 
 
+def share_with_agent(path):
+    """root:hbagent 0640: the agent's user may read it, nobody else. Before the first
+    install hbagent does not exist yet; install.sh sets it then."""
+    try:
+        import grp
+        os.chown(path, 0, grp.getgrnam('hbagent').gr_gid)
+        os.chmod(path, 0o640)
+    except (KeyError, ImportError, PermissionError):
+        pass
+
+
 def write_private(path, text, mode):
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
     with os.fdopen(fd, 'w') as f:
@@ -211,8 +222,8 @@ def install(t, cfg, user, password, interval=None):
     os.makedirs(DIR, mode=0o755, exist_ok=True)
     # config.yaml and the login first, so the agent's very first connection works
     tmp = os.path.join(DIR, 'config.yaml.new')
-    write_private(tmp, config_yaml(cfg, interval or current_interval()), 0o644)
-    os.chmod(tmp, 0o644)                                 # readable by the agent's user, whatever the umask
+    write_private(tmp, config_yaml(cfg, interval or current_interval()), 0o600)
+    share_with_agent(tmp)                                # the agent's user reads it, whatever the umask
     os.replace(tmp, os.path.join(DIR, 'config.yaml'))
     write_login(user, password)
     with tempfile.TemporaryDirectory() as work:            # agent.env never lands anywhere but /opt
@@ -229,12 +240,7 @@ def write_login(user, password):
     path = os.path.join(DIR, 'mqtt.env')
     tmp = path + '.new'
     write_private(tmp, login_env(user, password), 0o600)
-    try:
-        import grp
-        os.chown(tmp, 0, grp.getgrnam('hbagent').gr_gid)
-        os.chmod(tmp, 0o640)
-    except (KeyError, ImportError):
-        pass                                                # install.sh fixes it once the user exists
+    share_with_agent(tmp)
     os.replace(tmp, path)
 
 
@@ -270,9 +276,9 @@ def merge_config(path):
         merged['prefer'] = ''                            # another broker: the agent finds its way in again
         merged['ports'] = dict(merged['ports'], **{('tcp-tls' if new['tls'] else 'tcp'): new['port']})
     tmp = os.path.join(DIR, 'config.yaml.new')
-    write_private(tmp, config_yaml(merged, merged['interval']), 0o644)
+    write_private(tmp, config_yaml(merged, merged['interval']), 0o600)
     ha.parse_settings(open(tmp).read())                  # never leave a file the agent would refuse
-    os.chmod(tmp, 0o644)                                 # readable by the agent's user, whatever the umask
+    share_with_agent(tmp)                                # the agent's user reads it, whatever the umask
     os.replace(tmp, os.path.join(DIR, 'config.yaml'))
     print(f"CONFIG_PUSHED broker {merged['broker']}:{merged['port']} tls={'on' if merged['tls'] else 'off'} "
           f"every {merged['interval']}s, way in {merged['prefer'] or 'found by the agent'}")

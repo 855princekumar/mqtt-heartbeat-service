@@ -259,4 +259,4 @@ def test_config_yaml_stays_readable_by_the_agent_under_a_strict_umask(tmp_path, 
         assert setup.merge_config(str(new)) == 0
     finally:
         os.umask(old)
-    assert (tmp_path / 'config.yaml').stat().st_mode & 0o777 == 0o644
+    assert (tmp_path / 'config.yaml').stat().st_mode & 0o007 == 0                 # never readable by other users

@@ -21,7 +21,10 @@ class FakeClient:
         self.client_id, self.published, self.will, self.tls, self.disconnected = client_id, [], None, False, False
         FakeClient.instances.append(self)
 
-    def tls_set(self):
+    def tls_set_context(self, ctx):
+        import ssl
+        assert ctx.minimum_version >= ssl.TLSVersion.TLSv1_2 and ctx.verify_mode == ssl.CERT_REQUIRED
+        assert ctx.check_hostname                               # never an unverified or old TLS
         self.tls = True
 
     def will_set(self, topic, payload, qos, retain):

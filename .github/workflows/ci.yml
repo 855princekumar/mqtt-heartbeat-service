@@ -112,7 +112,7 @@ jobs:
             test "$(systemctl show edgeshell-heartbeat -p NoNewPrivileges --value)" = yes
             test "$(systemctl show edgeshell-heartbeat -p ProtectSystem --value)" = strict
             test "$(stat -c %a:%U:%G /opt/edgeshell-heartbeat/agent.env)" = 640:root:hbagent
-            test "$(stat -c %a /opt/edgeshell-heartbeat/config.yaml)" = 644
+            test "$(stat -c %a:%G /opt/edgeshell-heartbeat/config.yaml)" = 640:hbagent
             ! ls /opt/edgeshell-heartbeat/__pycache__ 2>/dev/null'
       - name: Hot reload without a restart; a broken file is ignored
         run: |

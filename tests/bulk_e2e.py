@@ -133,8 +133,8 @@ def main():
                                check_rc=False)
             check('tmp.' not in leftovers and 'admin123' not in leftovers, 'no bundle, token or password left in temp folders')
             perms = docker('exec', NODES[0], 'stat', '-c', '%a:%U:%G', '/opt/edgeshell-heartbeat/mqtt.env').strip()
-            cfg_mode = docker('exec', NODES[0], 'stat', '-c', '%a', '/opt/edgeshell-heartbeat/config.yaml').strip()
-            check(cfg_mode == '644', 'config.yaml readable by the agent (whatever the umask)', cfg_mode)
+            cfg_mode = docker('exec', NODES[0], 'stat', '-c', '%a:%U:%G', '/opt/edgeshell-heartbeat/config.yaml').strip()
+            check(cfg_mode == '640:root:hbagent', 'config.yaml readable by the agent only (whatever the umask)', cfg_mode)
             check(perms == '640:root:hbagent', 'the broker login is private on the node', perms)
 
             write_config(work, key, 'wrong-password', hive)
