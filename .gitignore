@@ -6,3 +6,8 @@ agent.env
 agent.env.*
 *.key
 .env
+
+# bulk_setup.py: passwords and per-run results
+tools/bulk.yaml
+tools/results/
+*.tokens.csv

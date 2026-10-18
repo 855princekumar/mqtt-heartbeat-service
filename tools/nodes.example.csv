@@ -1,0 +1,4 @@
+node,host,user,port
+pi-node-01,192.168.1.21,pi,22
+pi-node-02,192.168.1.22,pi,22
+gateway-01,gateway-01.local,admin,2222
