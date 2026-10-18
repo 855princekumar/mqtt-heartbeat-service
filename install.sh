@@ -8,7 +8,9 @@
 #   /opt/edgeshell-heartbeat/heartbeat_agent.py      root:root 0644
 #   /opt/edgeshell-heartbeat/heartbeat_protocol.py   root:root 0644
 #   /opt/edgeshell-heartbeat/agent.env               root:hbagent 0640 (this node's key)
-#   /opt/edgeshell-heartbeat/config.yaml             root:root 0644 (fleet settings, hot reloaded;
+#   /opt/edgeshell-heartbeat/mqtt.env                root:hbagent 0640 (broker login, if any)
+#   /opt/edgeshell-heartbeat/setup.py                root:root 0644 (status, test, new login later)
+#   /opt/edgeshell-heartbeat/config.yaml             root:hbagent 0640 (fleet settings, hot reloaded;
 #                                                    created with defaults only if missing)
 #   /etc/systemd/system/edgeshell-heartbeat.service
 # The service runs as the unprivileged user hbagent with a read-only system.
@@ -69,6 +71,10 @@ id hbagent >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbi
 
 install -d -m 0755 -o root -g root "$DIR"
 install -m 0644 -o root -g root "$SRC/heartbeat_agent.py" "$SRC/heartbeat_protocol.py" "$DIR/"
+[ -f "$SRC/setup.py" ] && [ "$(readlink -f "$SRC/setup.py")" != "$(readlink -f "$DIR/setup.py")" ] && \
+    install -m 0644 -o root -g root "$SRC/setup.py" "$DIR/"
+[ -f "$DIR/mqtt.env" ] && { chown root:hbagent "$DIR/mqtt.env"; chmod 0640 "$DIR/mqtt.env"; }
+[ -f "$DIR/config.yaml" ] && { chown root:hbagent "$DIR/config.yaml"; chmod 0640 "$DIR/config.yaml"; }   # the agent reads it, nobody else
 if [ "$(readlink -f "$ENV_SRC")" != "$(readlink -f "$DIR/agent.env")" ]; then
     install -m 0640 -o root -g hbagent "$ENV_SRC" "$DIR/agent.env"
 else
@@ -86,7 +92,7 @@ port: 8883                  # 8883 = MQTT over TLS
 tls: true                   # verify the broker certificate (keep true on public brokers)
 interval: 10                # seconds between heartbeats (5 to 3600)
 YAML
-    chmod 0644 "$DIR/config.yaml"
+    chown root:hbagent "$DIR/config.yaml" && chmod 0640 "$DIR/config.yaml"
 fi
 
 mkdir -p "$(dirname "$UNIT")"

@@ -28,7 +28,7 @@ jobs:
       - name: Syntax errors and undefined names
         run: ruff check --select E9,F63,F7,F82 .
       - name: Security lint
-        run: bandit -q -r heartbeat_agent.py heartbeat_protocol.py -ll
+        run: bandit -q -r heartbeat_agent.py heartbeat_protocol.py setup.py tools -ll
       - name: Installer parses
         run: bash -n install.sh
       - name: No em dashes
@@ -112,7 +112,7 @@ jobs:
             test "$(systemctl show edgeshell-heartbeat -p NoNewPrivileges --value)" = yes
             test "$(systemctl show edgeshell-heartbeat -p ProtectSystem --value)" = strict
             test "$(stat -c %a:%U:%G /opt/edgeshell-heartbeat/agent.env)" = 640:root:hbagent
-            test "$(stat -c %a /opt/edgeshell-heartbeat/config.yaml)" = 644
+            test "$(stat -c %a:%G /opt/edgeshell-heartbeat/config.yaml)" = 640:hbagent
             ! ls /opt/edgeshell-heartbeat/__pycache__ 2>/dev/null'
       - name: Hot reload without a restart; a broken file is ignored
         run: |
@@ -161,10 +161,54 @@ jobs:
           docker exec node bash /root/hb/install.sh --uninstall | grep -q HEARTBEAT_UNINSTALLED
           ! docker exec node pgrep -f heartbeat_agent.py
 
+  join:
+    name: Join token end to end with SenseHive (Debian 12 systemd node, two SenseHives)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          path: agent
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          repository: 855princekumar/sense-hive
+          ref: main
+          path: sense-hive
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: "3.12"
+      - name: Broker and a Debian 12 node with systemd
+        run: |
+          docker run -d --name mq -p 1883:1883 eclipse-mosquitto:2.0.20 mosquitto -c /mosquitto-no-auth.conf
+          docker run -d --name node --privileged --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw --add-host host.docker.internal:host-gateway jrei/systemd-debian:12
+          for i in $(seq 1 30); do docker exec node systemctl is-system-running 2>/dev/null | grep -qE 'running|degraded' && break; sleep 2; done
+          docker exec node bash -c 'apt-get update -qq && apt-get install -y -qq python3 >/dev/null'
+          pip install -r sense-hive/version-1.0/requirements.txt
+      - name: SenseHive issues a token, setup.py installs, the node appears; another SenseHive never sees it
+        run: python agent/tests/join_e2e.py --sensehive-dir sense-hive/version-1.0 --node node --broker 127.0.0.1:1883 --node-broker host.docker.internal:1883
+
+  bulk:
+    name: Bulk SSH tool end to end (three systemd nodes, broker with a login, SenseHive)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          path: agent
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+        with:
+          repository: 855princekumar/sense-hive
+          ref: main
+          path: sense-hive
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r sense-hive/version-1.0/requirements.txt pyyaml
+      - name: Tokens in bulk, setup over SSH, wrong and new passwords, test mode
+        run: python agent/tests/bulk_e2e.py --sensehive-dir sense-hive/version-1.0
+
   release:
     name: GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [lint, secrets, test, broker, install, install-no-systemd]
+    needs: [lint, secrets, test, broker, install, install-no-systemd, join, bulk]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -173,7 +217,7 @@ jobs:
       - name: Package and checksum
         run: |
           mkdir dist
-          tar czf "dist/mqtt-heartbeat-service-${GITHUB_REF_NAME}.tar.gz" heartbeat_agent.py heartbeat_protocol.py install.sh README.md LICENSE
+          tar czf "dist/mqtt-heartbeat-service-${GITHUB_REF_NAME}.tar.gz" heartbeat_agent.py heartbeat_protocol.py install.sh setup.py tools/bulk_setup.py tools/bulk.example.yaml tools/nodes.example.csv README.md LICENSE
           (cd dist && sha256sum *.tar.gz > SHA256SUMS)
       - uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8  # v2.3.2
         with:

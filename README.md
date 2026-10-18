@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/ci.yml/badge.svg)](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/codeql.yml/badge.svg)](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/codeql.yml)
-![Release](https://img.shields.io/badge/release-v1.1.0-blue)
+![Release](https://img.shields.io/badge/release-v1.2.0-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Python 3.7+](https://img.shields.io/badge/python-3.7%2B-3776AB?logo=python&logoColor=white)
 ![paho-mqtt 1.6 and 2.x](https://img.shields.io/badge/paho--mqtt-1.6%20%7C%202.x-660066)
@@ -165,16 +165,48 @@ key id and the topic key), never the master key. See also
 
 ## Install
 
-**With EdgeShell:** **Node Fleet, Fleet Setup, Heartbeat agent**; tick a test
-group first, then the fleet.
+**On the node, with a join token from SenseHive** (no EdgeShell needed):
 
-**By hand** (full walkthrough, including making `agent.env` and checking the
-node appears in SenseHive: [docs/SETUP.md](docs/SETUP.md)):
+1. In SenseHive (1.8+): **Heartbeats, Add node**, a name for this node, **Create token**.
+2. On the node, over SSH or at its own screen:
+
+   ```bash
+   git clone https://github.com/855princekumar/mqtt-heartbeat-service
+   cd mqtt-heartbeat-service
+   sudo python3 setup.py           # paste the join token, then the broker login (not shown)
+   ```
+
+3. The node appears on SenseHive's Heartbeats page within seconds, by itself.
+
+`setup.py` checks the token (a cut or changed paste is refused), writes this
+node's `agent.env` and `config.yaml` (the broker SenseHive listens on), and runs
+`install.sh`: the hardened systemd service below, started now and at boot.
 
 ```bash
-sudo bash install.sh agent.env      # install or update
-sudo bash install.sh --uninstall    # remove everything
+sudo python3 setup.py --status      # running? which node, which fleet
+sudo python3 setup.py --uninstall   # remove everything
+git pull && sudo python3 setup.py   # update (paste the token again)
 ```
+
+The token holds this node's name and keys and the broker, **never the fleet
+master key**. Every SenseHive has its own fleet: nodes set up from one
+SenseHive's tokens never appear in another's, even on the same public broker
+(`setup.py --status` and SenseHive's **Add node** show the same fleet id).
+
+**Many nodes without EdgeShell:** `python tools/bulk_setup.py` on your own
+computer: pick the tokens CSV from SenseHive (**Add node, Many nodes**) and a
+CSV of SSH addresses; it installs, logs in and tests every node, and can roll a
+new broker password out to all of them ([guide](docs/SETUP.md#d-many-nodes-at-once-bulk-ssh-without-edgeshell)).
+
+**Broker login:** a username and password (`mqtt.env`, private, never in
+`config.yaml`), checked against the broker before it is saved. TLS first;
+plain MQTT only when the TLS port cannot be reached ([details](docs/SETUP.md#the-broker-login)).
+
+**With EdgeShell:** **Node Fleet, Fleet Setup, Heartbeat agent**; tick a test
+group first, then the fleet. EdgeShell does the same over SSH for many nodes.
+
+**By hand, step by step** (making `agent.env` yourself from the master key):
+[docs/SETUP.md](docs/SETUP.md#c-by-hand-with-the-master-key).
 
 Requirements: Python 3.7+, and the OS packages `python3-paho-mqtt`,
 `python3-yaml`, `python3-cryptography` (installed automatically with apt; no
@@ -184,6 +216,8 @@ pip, nothing downloaded at run time).
 |---|---|---|
 | `/opt/edgeshell-heartbeat/heartbeat_agent.py`, `heartbeat_protocol.py` | root, 0644 | the agent |
 | `/opt/edgeshell-heartbeat/agent.env` | root:hbagent, 0640 | this node's name and keys (never bulk-pushed) |
+| `/opt/edgeshell-heartbeat/mqtt.env` | root:hbagent, 0640 | the broker username and password |
+| `/opt/edgeshell-heartbeat/setup.py` | root, 0644 | `--status`, `--test`, `--set-credentials` on the node |
 | `/opt/edgeshell-heartbeat/config.yaml` | root, 0644 | fleet settings, hot reloaded (no secrets) |
 | `/etc/systemd/system/edgeshell-heartbeat.service` | root | the service |
 
@@ -197,7 +231,26 @@ broker: broker.hivemq.com   # MQTT broker host
 port: 8883                  # 8883 = MQTT over TLS
 tls: true                   # verify the broker certificate (keep true on public brokers)
 interval: 10                # seconds between heartbeats (5 to 3600)
+# optional (setup.py writes these): the four ways in and which one worked here
+prefer: tcp-tls             # tcp-tls | ws-tls | tcp | ws
+fallback: true              # switch to another way when this one stops working
+require_tls: false          # true: never use a plain way
+ws_path: /mqtt
+ports: {tcp-tls: 8883, ws-tls: 8884, tcp: 1883, ws: 8000}
 ```
+
+### Four ways to the broker
+
+Some networks block TLS on 8883, or a proxy owns the port; an agent that knows
+one way in then retries it forever. The agent knows four, most secure first:
+**MQTT over TLS** (8883), **WebSocket over TLS** (8884), **plain MQTT** (1883),
+**plain WebSocket** (8000). `setup.py` tries each with a real login at install,
+prints the table, and keeps the first that works as `prefer`. While running,
+if the connection stays down for three beats the agent probes again and
+switches; every 10 minutes it tries the preferred way first. A broker that
+refuses the login stops the search (every way uses the same login), and no
+error ends the agent's loop. On a plain way the heartbeats stay encrypted end
+to end; only the broker login is not protected, and `setup.py` says so.
 
 The agent checks the file on every beat and applies a change **without a
 restart**:
@@ -230,6 +283,9 @@ or the internet is away. Troubleshooting: [docs/SETUP.md](docs/SETUP.md#troubles
 | Real broker (Mosquitto) | birth and heartbeats arrive and verify, forged messages are rejected, the signed last will arrives after a connection is cut |
 | systemd install (Debian 12) | runs as `hbagent` with hardening, file modes, hot reload with no restart, an update keeps a pushed config, uninstall removes everything |
 | Install without systemd (Ubuntu 22.04 container) | the background-process mode installs, beats and uninstalls |
+| Join token end to end (with SenseHive) | SenseHive issues a token, `setup.py` installs a real systemd service on Debian 12, the node appears online by itself, a second SenseHive on the same broker never sees it, a cut token installs nothing, uninstall removes everything |
+| `setup.py` unit tests | tokens read exactly as SenseHive makes them, never the master key, cut, edited and hostile tokens refused with a plain reason; the broker login checked with a real MQTT handshake; TLS first, plain only when TLS cannot be reached, never after a refused login |
+| Bulk SSH tool end to end | SenseHive makes tokens in bulk, `tools/bulk_setup.py` sets up three real systemd nodes over SSH against a broker that requires a login, SenseHive shows them online, an unreachable node is reported, a wrong password is refused and the old login stays, a new password reaches every node without a restart |
 | Bandit, gitleaks, CodeQL, lint | no risky code, no secrets in history |
 
 Against the real public broker (optional, outside CI):

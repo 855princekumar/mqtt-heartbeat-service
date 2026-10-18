@@ -1,0 +1,32 @@
+# Settings for tools/bulk_setup.py. Copy to tools/bulk.yaml (never commit it:
+# it holds passwords) and change the values.
+
+# The MQTT broker login every node uses (required). The example login is
+# admin / admin123: create that user on your broker for a first test, then set
+# your own here and on the broker, and run bulk_setup.py, "new broker login".
+# On a public broker without logins any value is accepted.
+broker_login:
+  username: admin
+  password: admin123
+
+tls:
+  require: false        # true: never fall back to plain MQTT when TLS cannot be reached
+  plain_port: 1883      # the plain MQTT port tried when the TLS port cannot be reached
+
+ssh:
+  user: pi              # used when the nodes CSV leaves "user" empty
+  port: 22              # used when the nodes CSV leaves "port" empty
+  key_file: ""          # empty: your SSH agent and ~/.ssh/config
+  password: ""          # only for password logins (pip install paramiko); keys are better
+  sudo_password: ""     # empty: passwordless sudo (the Raspberry Pi OS default)
+  connect_timeout: 10
+  known_hosts_file: ""  # empty: ~/.ssh/known_hosts (new nodes are remembered on first contact)
+
+parallel: 10            # nodes worked on at the same time
+
+# Optional: after the setup, wait until SenseHive shows every node online.
+sensehive:
+  url: ""               # e.g. http://192.168.1.10:5000
+  api_token: ""         # SenseHive's HEARTBEAT_API_TOKEN
+
+results_dir: results    # a CSV per run, next to this file (no secrets in it)

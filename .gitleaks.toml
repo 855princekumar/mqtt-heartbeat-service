@@ -6,6 +6,8 @@ useDefault = true
 [allowlist]
 description = "protocol test vectors (public, derived from bytes 0..31)"
 regexes = [
+  '''admin123''',                     # the documented example broker login (bulk.example.yaml, tests)
+  '''rotated-[0-9]''',                # throwaway passwords in the tests
   '''493726126c479bc52142d4f3f63850c0f5ca956ef4466bc3161fa7b0d6233735''',
   '''714f19029722c7ce079b14df24552ae0f154762e040f188d79dece5ef5208ade''',
 ]
