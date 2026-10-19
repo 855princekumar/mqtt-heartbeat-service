@@ -1,0 +1,5 @@
+# What the agent needs at run time. EdgeShell's esapp installs these into the
+# agent's own venv; install.sh (the classic install) uses the distribution's packages.
+paho-mqtt>=1.6,<3
+cryptography>=3.3
+PyYAML>=5.1

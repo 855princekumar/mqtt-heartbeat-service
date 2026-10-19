@@ -1,0 +1,12 @@
+{
+  "name": "heartbeat",
+  "description": "MQTT heartbeat agent: encrypted, signed heartbeats and a last will over a public broker",
+  "run": "python app/heartbeat_agent.py",
+  "requirements": "requirements.txt",
+  "env": {"PYTHONDONTWRITEBYTECODE": "1"},
+  "health": {"within_s": 20},
+  "stable_after_s": 600,
+  "memory_max": "64M",
+  "cpu_quota": "10%",
+  "restart_sec": 5
+}

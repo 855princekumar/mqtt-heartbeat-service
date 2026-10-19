@@ -6,7 +6,7 @@
 
 [![CI](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/ci.yml/badge.svg)](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/codeql.yml/badge.svg)](https://github.com/855princekumar/mqtt-heartbeat-service/actions/workflows/codeql.yml)
-![Release](https://img.shields.io/badge/release-v1.2.0-blue)
+![Release](https://img.shields.io/badge/release-v1.3.0-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 ![Python 3.7+](https://img.shields.io/badge/python-3.7%2B-3776AB?logo=python&logoColor=white)
 ![paho-mqtt 1.6 and 2.x](https://img.shields.io/badge/paho--mqtt-1.6%20%7C%202.x-660066)
@@ -202,8 +202,17 @@ new broker password out to all of them ([guide](docs/SETUP.md#d-many-nodes-at-on
 `config.yaml`), checked against the broker before it is saved. TLS first;
 plain MQTT only when the TLS port cannot be reached ([details](docs/SETUP.md#the-broker-login)).
 
-**With EdgeShell:** **Node Fleet, Fleet Setup, Heartbeat agent**; tick a test
-group first, then the fleet. EdgeShell does the same over SSH for many nodes.
+**With EdgeShell (1.17+):** EdgeShell installs the agent as an app with its
+app manager (esapp): the code in `/opt/edgeshell/apps/heartbeat/versions/VERSION`
+with **its own Python venv** (no system-wide packages), the node's settings in
+`/opt/edgeshell/apps/heartbeat/data` (readable by the agent's user only), the
+service `es-heartbeat`. Updates switch atomically and go back to the previous
+version by itself when the new one does not stay up; the newest 3 stable
+versions stay on the node. A node with the classic install below is moved over
+by itself: the old agent stops only once the new one runs, and comes back if it
+does not. Here `setup.py --files-only` writes only the settings
+(`HB_HOME`, `HB_GROUP`, `HB_UNIT` point it at the app); `esapp.json` and
+`requirements.txt` describe the package.
 
 **By hand, step by step** (making `agent.env` yourself from the master key):
 [docs/SETUP.md](docs/SETUP.md#c-by-hand-with-the-master-key).

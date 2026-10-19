@@ -260,3 +260,37 @@ def test_config_yaml_stays_readable_by_the_agent_under_a_strict_umask(tmp_path, 
     finally:
         os.umask(old)
     assert (tmp_path / 'config.yaml').stat().st_mode & 0o007 == 0                 # never readable by other users
+
+
+def test_files_only_writes_the_settings_and_installs_nothing(tmp_path, monkeypatch, capsys):
+    """EdgeShell's esapp installs the code, its venv and its service; setup.py only writes
+    the node's settings into the app's data folder (HB_HOME)."""
+    import heartbeat_agent as ha
+    monkeypatch.setattr(setup, 'DIR', str(tmp_path))
+    monkeypatch.setattr(setup.os, 'geteuid', lambda: 0, raising=False)
+    monkeypatch.setattr(setup, 'find_transport',
+                        lambda t, u, p, r, port: (dict(setup.settings_for(t), prefer='tcp'), 'x over tcp on port 1883'))
+    monkeypatch.setattr(setup.subprocess, 'run', lambda *a, **k: pytest.fail('install.sh must not run'))
+    monkeypatch.setenv('HB_JOIN_TOKEN', token(node='pi-node-11'))
+    monkeypatch.setenv('HB_MQTT_USERNAME', 'admin')
+    monkeypatch.setenv('HB_MQTT_PASSWORD', 'admin123')
+    assert setup.main(['--files-only', '--interval', '20']) == 0
+    out = capsys.readouterr().out
+    assert 'HEARTBEAT_FILES_OK' in out and 'Done.' in out
+    env = dict(line.split('=', 1) for line in (tmp_path / 'agent.env').read_text().splitlines())
+    assert env == hp.provision(MASTER, 'pi-node-11')
+    assert ha.parse_settings((tmp_path / 'config.yaml').read_text())['interval'] == 20
+    assert not [f for f in os.listdir(tmp_path) if f.endswith('.new')]
+
+
+def test_the_agent_finds_its_folder_from_hb_home_or_app_data(monkeypatch):
+    import importlib
+    import heartbeat_agent as ha
+    monkeypatch.delenv('HB_HOME', raising=False)
+    monkeypatch.setenv('APP_DATA', '/opt/edgeshell/apps/heartbeat/data')
+    assert importlib.reload(ha).IDENTITY == os.path.join('/opt/edgeshell/apps/heartbeat/data', 'agent.env')
+    monkeypatch.setenv('HB_HOME', '/srv/hb')
+    assert importlib.reload(ha).SETTINGS == os.path.join('/srv/hb', 'config.yaml')
+    monkeypatch.delenv('HB_HOME')
+    monkeypatch.delenv('APP_DATA')
+    assert importlib.reload(ha).HOME == '/opt/edgeshell-heartbeat'

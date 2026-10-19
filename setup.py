@@ -46,7 +46,11 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DIR = '/opt/edgeshell-heartbeat'
+# The agent's folder, its group and its service. Defaults: the classic install by install.sh.
+# EdgeShell's esapp install sets HB_HOME=/opt/edgeshell/apps/heartbeat/data, HB_GROUP and HB_UNIT=es-heartbeat.
+DIR = os.environ.get('HB_HOME') or '/opt/edgeshell-heartbeat'
+GROUP = os.environ.get('HB_GROUP') or 'hbagent'
+UNIT = os.environ.get('HB_UNIT') or 'edgeshell-heartbeat'
 PREFIX = 'hbj1.'
 HEX = re.compile(r'^[0-9a-f]+$')
 NODE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$')
@@ -138,11 +142,11 @@ def read_env_file(path):
 
 
 def share_with_agent(path):
-    """root:hbagent 0640: the agent's user may read it, nobody else. Before the first
+    """root:GROUP 0640: the agent's user may read it, nobody else. Before the first
     install hbagent does not exist yet; install.sh sets it then."""
     try:
         import grp
-        os.chown(path, 0, grp.getgrnam('hbagent').gr_gid)
+        os.chown(path, 0, grp.getgrnam(GROUP).gr_gid)
         os.chmod(path, 0o640)
     except (KeyError, ImportError, PermissionError):
         pass
@@ -217,8 +221,10 @@ def find_transport(t, user, password, require_tls=False, plain_port=PLAIN_PORT):
 
 # ---------------------------------------------------------------- actions
 
-def install(t, cfg, user, password, interval=None):
-    """t: the token (this node's identity); cfg: the broker settings find_transport() chose."""
+def install(t, cfg, user, password, interval=None, files_only=False):
+    """t: the token (this node's identity); cfg: the broker settings find_transport() chose.
+    files_only: write agent.env, mqtt.env and config.yaml into DIR and stop there (EdgeShell's
+    esapp installs the code, its venv and its service)."""
     os.makedirs(DIR, mode=0o755, exist_ok=True)
     # config.yaml and the login first, so the agent's very first connection works
     tmp = os.path.join(DIR, 'config.yaml.new')
@@ -226,6 +232,13 @@ def install(t, cfg, user, password, interval=None):
     share_with_agent(tmp)                                # the agent's user reads it, whatever the umask
     os.replace(tmp, os.path.join(DIR, 'config.yaml'))
     write_login(user, password)
+    if files_only:
+        path = os.path.join(DIR, 'agent.env')
+        write_private(path + '.new', agent_env(t), 0o600)
+        share_with_agent(path + '.new')
+        os.replace(path + '.new', path)
+        print('HEARTBEAT_FILES_OK %s' % DIR)
+        return True
     with tempfile.TemporaryDirectory() as work:            # agent.env never lands anywhere but /opt
         env = os.path.join(work, 'agent.env')
         write_private(env, agent_env(t), 0o600)
@@ -295,7 +308,7 @@ def status():
     if HEX.match(env.get('HB_TOPIC_KEY', '')):
         print(f"Fleet: {fleet_id(env['HB_TOPIC_KEY'])}  (SenseHive shows the same under Heartbeats, Add node)")
     if os.path.isdir('/run/systemd/system'):
-        return subprocess.call(['systemctl', '--no-pager', 'status', 'edgeshell-heartbeat'])
+        return subprocess.call(['systemctl', '--no-pager', 'status', UNIT])
     return subprocess.call(['pgrep', '-a', '-f', DIR + '/heartbeat_agent.py'])
 
 
@@ -317,9 +330,9 @@ def test():
         print('HEARTBEAT_TEST fail')
         return 1
     if os.path.isdir('/run/systemd/system'):
-        active = subprocess.call(['systemctl', 'is-active', '--quiet', 'edgeshell-heartbeat']) == 0
-        enabled = subprocess.call(['systemctl', 'is-enabled', '--quiet', 'edgeshell-heartbeat']) == 0
-        check(active and enabled, 'service edgeshell-heartbeat running and enabled at boot')
+        active = subprocess.call(['systemctl', 'is-active', '--quiet', UNIT]) == 0
+        enabled = subprocess.call(['systemctl', 'is-enabled', '--quiet', UNIT]) == 0
+        check(active and enabled, f'service {UNIT} running and enabled at boot')
     else:
         check(subprocess.call(['pgrep', '-f', DIR + '/heartbeat_agent.py'], stdout=subprocess.DEVNULL) == 0,
               'agent running (background process, no systemd)')
@@ -379,6 +392,8 @@ def main(argv=None):
     ap.add_argument('--require-tls', action='store_true', help='never fall back to plain MQTT')
     ap.add_argument('--plain-port', type=int, default=PLAIN_PORT, help='plain MQTT port for the fallback (1883)')
     ap.add_argument('--interval', type=int, help='seconds between heartbeats (5 to 3600; default: keep, else 10)')
+    ap.add_argument('--files-only', action='store_true',
+                    help='write the settings into HB_HOME and stop (EdgeShell esapp installs the code and service)')
     a = ap.parse_args(argv)
 
     if a.check:
@@ -444,14 +459,15 @@ def main(argv=None):
     if a.interval is not None and not 5 <= a.interval <= 3600:
         print('Not set up: --interval must be 5 to 3600 seconds')
         return 1
-    if not install(t, cfg, user, password, a.interval):
+    if not install(t, cfg, user, password, a.interval, a.files_only):
         print('Not set up: see the messages above (docs/SETUP.md, Troubleshooting).')
         return 1
     for f in (a.token_file, a.login_file):
         if f:
             os.remove(f)
     print(f"Done. {t['node']} appears on SenseHive's Heartbeats page within a few seconds.")
-    print(f'Check this node any time with: sudo python3 {DIR}/setup.py --test')
+    if not a.files_only:
+        print(f'Check this node any time with: sudo python3 {DIR}/setup.py --test')
     return 0
 
 

@@ -31,8 +31,9 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import heartbeat_protocol as hp  # noqa: E402
 
-__version__ = '1.2.0'
-HOME = os.environ.get('HB_HOME', '/opt/edgeshell-heartbeat')
+__version__ = '1.3.0'
+# Its folder: HB_HOME, or APP_DATA when EdgeShell's esapp runs it (/opt/edgeshell/apps/heartbeat/data)
+HOME = os.environ.get('HB_HOME') or os.environ.get('APP_DATA') or '/opt/edgeshell-heartbeat'
 IDENTITY = os.path.join(HOME, 'agent.env')
 SETTINGS = os.path.join(HOME, 'config.yaml')
 CREDENTIALS = os.path.join(HOME, 'mqtt.env')
