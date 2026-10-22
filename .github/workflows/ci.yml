@@ -20,7 +20,7 @@ jobs:
     name: Lint and static checks
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.12"
@@ -39,7 +39,7 @@ jobs:
     name: Secret scan (full history)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7  # v2.3.9
@@ -55,7 +55,7 @@ jobs:
         python: ["3.9", "3.11", "3.12", "3.13"]
         paho: ["1.6.1", "2.1.0"]
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: ${{ matrix.python }}
@@ -71,7 +71,7 @@ jobs:
     name: Real broker end to end (Mosquitto)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: "3.11"
@@ -90,7 +90,7 @@ jobs:
     name: Install as a hardened systemd service (Debian 12)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Debian 12 with systemd
         run: |
           docker run -d --name node --privileged --cgroupns=host -v /sys/fs/cgroup:/sys/fs/cgroup:rw jrei/systemd-debian:12
@@ -142,7 +142,7 @@ jobs:
     name: Install without systemd (Ubuntu 22.04 container)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Background agent as hbagent, talking to a local broker
         run: |
           pip install cryptography
@@ -165,10 +165,10 @@ jobs:
     name: Join token end to end with SenseHive (Debian 12 systemd node, two SenseHives)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           path: agent
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           repository: 855princekumar/sense-hive
           ref: main
@@ -190,10 +190,10 @@ jobs:
     name: Bulk SSH tool end to end (three systemd nodes, broker with a login, SenseHive)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           path: agent
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           repository: 855princekumar/sense-hive
           ref: main
@@ -213,7 +213,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Package and checksum
         run: |
           mkdir dist
