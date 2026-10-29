@@ -24,7 +24,7 @@ jobs:
         language: [python]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
-      - uses: github/codeql-action/init@ce5e7eeac396d720fe2d802714996c8ce561e311  # v3
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370  # v3
         with:
           languages: ${{ matrix.language }}
           queries: security-extended
