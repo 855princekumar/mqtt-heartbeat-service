@@ -11,6 +11,7 @@ on:
     - cron: '23 3 * * 1'        # weekly, for newly published queries
 
 permissions:
+  actions: read            # codeql-action v4 reads the workflow run
   contents: read
   security-events: write
 
