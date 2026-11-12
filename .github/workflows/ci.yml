@@ -219,7 +219,7 @@ jobs:
           mkdir dist
           tar czf "dist/mqtt-heartbeat-service-${GITHUB_REF_NAME}.tar.gz" heartbeat_agent.py heartbeat_protocol.py install.sh setup.py tools/bulk_setup.py tools/bulk.example.yaml tools/nodes.example.csv README.md LICENSE
           (cd dist && sha256sum *.tar.gz > SHA256SUMS)
-      - uses: softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8  # v2.3.2
+      - uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3  # v3.0.4
         with:
           files: dist/*
           generate_release_notes: true
